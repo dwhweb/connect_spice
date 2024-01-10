@@ -1,0 +1,49 @@
+#!/bin/bash
+
+# Wrapper for spice-example-sh
+# By dwhweb 2024-01-18
+# Distributed under the terms of the AGPL
+
+# Resolve any symlinks and append .yml for the commensurate config file
+config_file="$(readlink -f "$0").yml"
+
+# Function to extract value from YAML file, returns empty string if the file doesn't exist
+get_yaml_value() {
+    local key="$1"
+
+    if [ -f "$config_file" ]; then
+      awk -v k="$key" '$1 == k ":" {print $2; found=1; exit} END {if (!found) print ""}' "$config_file"
+    else
+      echo ""
+    fi
+}
+
+# Iterate over the keys in the YAML file
+for k in "username" "password" "node_number" "cluster_hostname"
+do
+  # If the key exists and isn't empty in the YAML file, declare a commensurate variable with the value for that key
+  if [ -n "$(get_yaml_value "$k")" ]; then
+    declare "${k}=$(get_yaml_value "$k")"
+  else
+    # Prompt the user if there's no YAML config or the key/value doesn't exist, silently prompt the user for input if we're looking for the password
+    if [ "$k" = "password" ]; then
+      read -s -p "Enter $k:" "${k}"
+      echo
+    else
+      read -p "Enter $k:" "${k}"
+    fi
+  fi
+done
+
+proxy="$(get_yaml_value "proxy")"
+
+# Set the proxy to be the same value as the cluster hostname where the VM resides (most cases) if it isn't explicitly set in the config file
+if [ -z $proxy ]; then
+  proxy=$cluster_hostname
+fi
+
+# Add the suffix "@pam" to the username
+username="${username}@pam"
+
+# Construct and execute the command
+$(dirname $config_file)/spice-example-sh -u "$username" -p "$password" "$node_number" "$cluster_hostname" "$proxy"
